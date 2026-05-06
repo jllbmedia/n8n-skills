@@ -17,10 +17,11 @@ n8n-mcp provides tools organized into categories:
 2. **Configuration Validation** → [VALIDATION_GUIDE.md](VALIDATION_GUIDE.md)
 3. **Workflow Management** → [WORKFLOW_GUIDE.md](WORKFLOW_GUIDE.md)
 4. **Template Library** - Search and deploy 2,700+ real workflows
-5. **Data Tables** - Manage n8n data tables and rows (`n8n_manage_datatable`)
-6. **Credential Management** - Full credential CRUD + schema discovery (`n8n_manage_credentials`)
-7. **Security & Audit** - Instance security auditing with custom deep scan (`n8n_audit_instance`)
-8. **Documentation & Guides** - Tool docs, AI agent guide, Code node guides
+5. **Workflow Generation** - Natural-language → workflow with proposal review (`n8n_generate_workflow`, hosted-only)
+6. **Data Tables** - Manage n8n data tables and rows (`n8n_manage_datatable`)
+7. **Credential Management** - Full credential CRUD + schema discovery (`n8n_manage_credentials`)
+8. **Security & Audit** - Instance security auditing with custom deep scan (`n8n_audit_instance`)
+9. **Documentation & Guides** - Tool docs, AI agent guide, Code node guides
 
 ---
 
@@ -37,6 +38,7 @@ n8n-mcp provides tools organized into categories:
 | `n8n_update_partial_workflow` | Editing workflows (MOST USED!) | 50-200ms |
 | `validate_workflow` | Checking complete workflow | 100-500ms |
 | `n8n_deploy_template` | Deploy template to n8n instance | 200-500ms |
+| `n8n_generate_workflow` | NL → workflow (proposals → deploy), hosted-only | 2-15s |
 | `n8n_manage_datatable` | Managing data tables and rows | 50-500ms |
 | `n8n_manage_credentials` | Credential CRUD + schema discovery | 50-500ms |
 | `n8n_audit_instance` | Security audit (built-in + custom scan) | 500-5000ms |
@@ -499,6 +501,68 @@ n8n_deploy_template({
 });
 // Returns: workflow ID, required credentials, fixes applied
 ```
+
+---
+
+## Workflow Generation
+
+### n8n_generate_workflow
+
+Generates an n8n workflow from a natural-language description via a multi-step flow with a review checkpoint. **Hosted-only** — self-hosted instances receive a redirect message rather than a workflow.
+
+**Two paths:**
+
+**Path A — pick a proposal** (default; cheapest, recommended):
+```javascript
+// Step 1: Get up to 5 proposals (NOT deployed)
+n8n_generate_workflow({
+  description: "Send a Slack message every morning at 9am with a daily standup reminder"
+})
+// → { status: "proposals", proposals: [{id, name, description, flow_summary, credentials_needed}, ...] }
+
+// Step 2: Deploy the proposal you want
+n8n_generate_workflow({
+  description: "Send a Slack message every morning at 9am with a daily standup reminder",
+  deploy_id: "uuid-from-proposals"
+})
+// → { status: "deployed", workflow_id, workflow_name, workflow_url, node_count, node_summary }
+```
+
+**Path B — fresh generation** (when no proposal fits):
+```javascript
+// Step 1: Skip the proposal cache, get a preview (NOT deployed)
+n8n_generate_workflow({
+  description: "Webhook → transform JSON → POST to REST API",
+  skip_cache: true
+})
+// → { status: "preview", ... }
+
+// Step 2: Deploy the preview
+n8n_generate_workflow({
+  description: "Webhook → transform JSON → POST to REST API",
+  confirm_deploy: true
+})
+// → { status: "deployed", ... }
+```
+
+**Description tips** (more specific = better results):
+- Trigger type: webhook, schedule (with cadence), manual, form, chat
+- Services to integrate: name them (Slack, Gmail, Postgres, etc.)
+- Logic/flow: what transforms, branches, or aggregations are needed
+
+**Caveats:**
+- **Hosted-only** — on self-hosted, the response is `{hosted_only: true, ...}` with a redirect message
+- Generated workflows are deployed in **inactive** state — credentials must be configured in the n8n UI before activation
+- Proposals/preview live in per-MCP-session state; switching sessions loses pending state
+- Always run `n8n_validate_workflow({id})` after deployment to catch any issues
+- For self-hosted instances, fall back to `n8n_deploy_template` (curated templates) or `n8n_create_workflow` (full control)
+
+**When to use which:**
+| Goal | Tool |
+|------|------|
+| Pick from a curated 2,700+ template library | `n8n_deploy_template` |
+| Describe what you want in plain English (hosted only) | `n8n_generate_workflow` |
+| Build node-by-node with full control | `n8n_create_workflow` |
 
 ---
 
